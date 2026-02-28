@@ -4,9 +4,23 @@ import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
+from logger import logger
+
+class SpeckleFilter:
+    """
+    Applies a spatial smoothing filter to approximate Speckle noise reduction 
+    in SAR images, as commonly cited in satellite image preprocessing.
+    """
+    def __init__(self, kernel_size=3, sigma=(0.1, 2.0)):
+        self.blur = transforms.GaussianBlur(kernel_size=kernel_size, sigma=sigma)
+        
+    def __call__(self, img):
+        if not isinstance(img, torch.Tensor):
+            img = transforms.ToTensor()(img)
+        return self.blur(img)
 
 class SARLogTransform:
-    """Log-compress SAR intensity values."""
+    """Log-compress SAR intensity values to tame extreme scatterers."""
     def __init__(self, eps=1e-6):
         self.eps = eps
 
@@ -117,6 +131,7 @@ def get_transforms(img_size=224):
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.ToTensor(),
+        SpeckleFilter(),
         SARLogTransform(),
         transforms.Normalize(mean=[0.5], std=[0.2]) # Approximation, adjust based on stats
     ])
@@ -124,11 +139,13 @@ def get_transforms(img_size=224):
     sar_val_transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
+        SpeckleFilter(),
         SARLogTransform(),
         transforms.Normalize(mean=[0.5], std=[0.2])
     ])
     
     return eo_train_transform, sar_train_transform, sar_val_transform
+
 
 def mixup_data(x_sar, x_eo, y, alpha=1.0):
     """Returns mixed inputs, pairs of targets, and lambda."""

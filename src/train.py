@@ -10,6 +10,7 @@ from models import MAVIC_V2_Model
 from data import get_transforms, EOSARDataset, SAROnlyDataset, mixup_data, mixup_criterion
 from losses import label_smoothed_ce_loss, FeatureMatchingLoss, SupConLoss
 from evaluate import evaluate_model
+from logger import logger
 
 # Configuration - Tuned for Multi-GPU Superfast Training
 CONFIG = {
@@ -47,9 +48,9 @@ def train():
     device = torch.device(f'cuda:{gpu}' if torch.cuda.is_available() else 'cpu')
     
     if rank == 0:
-        print(f"🚀 [STAG-DDP] Initializing training on {world_size} GPUs...")
+        logger.info(f"🚀 [STAG-DDP] Initializing training on {world_size} GPUs...")
         if not os.path.exists(CONFIG['train_sar_root']):
-            print(f"ERROR: Dataset not found. Run dataset_utils.py first.")
+            logger.error(f"ERROR: Dataset not found. Run dataset_utils.py first.")
             return
 
     # Data Pipeline - Multi-threaded and Distributed
@@ -143,22 +144,22 @@ def train():
         if rank == 0:
             val_metrics = evaluate_model(model.module if world_size > 1 else model, val_loader, device, train_dataset.class_to_idx)
             final_sc = val_metrics['final_score']
-            print(f"📈 [VAL] Acc: {val_metrics['acc']:.4f}, AUROC: {val_metrics['auroc']:.4f}, Score: {final_sc:.4f}")
+            logger.info(f"📈 [VAL] Acc: {val_metrics['acc']:.4f}, AUROC: {val_metrics['auroc']:.4f}, Score: {final_sc:.4f}")
             
             if final_sc > best_score:
                 best_score = final_sc
                 epochs_no_improve = 0
                 torch.save(model.state_dict(), 'best_mavic_v2.pth')
-                print("💎 New best model saved!")
+                logger.info("💎 New best model saved!")
                 
                 if final_sc >= target_rank_1_score:
-                    print(f"🎉🏆 TARGET REACHED! Score {final_sc:.4f} > Rank 1. Auto-stopping to save compute.")
+                    logger.info(f"🎉🏆 TARGET REACHED! Score {final_sc:.4f} > Rank 1. Auto-stopping to save compute.")
                     should_stop = torch.tensor(1).to(device)
             else:
                 epochs_no_improve += 1
-                print(f"⏳ No improvement for {epochs_no_improve} epochs.")
+                logger.info(f"⏳ No improvement for {epochs_no_improve} epochs.")
                 if epochs_no_improve >= patience:
-                    print(f"🛑 EARLY STOPPING triggered. No improvement for {patience} epochs.")
+                    logger.warning(f"🛑 EARLY STOPPING triggered. No improvement for {patience} epochs.")
                     should_stop = torch.tensor(1).to(device)
                     
         # Sync the stopping decision across all GPUs
