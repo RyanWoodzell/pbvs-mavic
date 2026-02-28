@@ -29,7 +29,7 @@ def download_from_drive():
         gdown_lib.download(url, 'pbvs_dataset.zip', quiet=False)
     
     # Download Reference CSV if not exists (in root or mapped folder)
-    if not os.path.exists('pbvs_mavic_dataset/Validation_reference.csv') and not os.path.exists('pbvs_dataset.zip'):
+    if not os.path.exists('pbvs_mavic_dataset/Validation_reference.csv') and not os.path.exists('Validation_reference.csv'):
          print(f"📡 Downloading Validation_reference.csv from Google Drive...")
          url_csv = f'https://drive.google.com/uc?id={VALIDATION_CSV_ID}'
          gdown_lib.download(url_csv, 'Validation_reference.csv', quiet=False)
@@ -40,19 +40,19 @@ def extract_dataset(zip_path='pbvs_dataset.zip', extract_to='./pbvs_mavic_datase
         print(f"⚠️ Warning: Zip file not found at {zip_path}. Attempting download...")
         download_from_drive()
     
-    if os.path.exists(extract_to):
-        print(f"♻️  Dataset already extracted at {extract_to}. Skipping.")
-        return
-
-    print(f"🛠 Extracting {zip_path} to {extract_to}...")
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(extract_to)
+    if not os.path.exists(extract_to):
+        print(f"🛠 Extracting {zip_path} to {extract_to}...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_to)
+        print("✅ Extraction complete.")
+    else:
+        print(f"♻️  Dataset already extracted at {extract_to}. Skipping extraction.")
     
     # If the CSV was downloaded to root, move it into the extracted folder
-    if os.path.exists('Validation_reference.csv'):
-        shutil.move('Validation_reference.csv', os.path.join(extract_to, 'Validation_reference.csv'))
-    
-    print("✅ Extraction complete.")
+    target_csv = os.path.join(extract_to, 'Validation_reference.csv')
+    if os.path.exists('Validation_reference.csv') and not os.path.exists(target_csv):
+        print(f"📦 Moving Validation_reference.csv into {extract_to}")
+        shutil.move('Validation_reference.csv', target_csv)
 
 def check_structure(base_path='./pbvs_mavic_dataset'):
     """Check if the dataset structure matches expectations."""
