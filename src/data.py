@@ -22,10 +22,15 @@ class SpeckleFilter:
         if not isinstance(img, torch.Tensor):
             img = transforms.ToTensor()(img)
         
-        # Apply fast mean pooling (shape: C, H, W) -> add fake batch dim
-        img = img.unsqueeze(0)
-        img = F.avg_pool2d(img, kernel_size=self.kernel_size, stride=1, padding=self.padding)
-        img = img.squeeze(0)
+        # Depending on if it's called in Dataset (3D) or Train Loop (4D Batch)
+        if img.dim() == 3:
+            img = img.unsqueeze(0)
+            img = F.avg_pool2d(img, kernel_size=self.kernel_size, stride=1, padding=self.padding)
+            img = img.squeeze(0)
+        else:
+            # Already batched
+            img = F.avg_pool2d(img, kernel_size=self.kernel_size, stride=1, padding=self.padding)
+            
         return img
 
 class SARLogTransform:
