@@ -56,6 +56,13 @@ def train():
 
     # Data Pipeline - Multi-threaded and Distributed
     eo_tr, sar_tr, sar_val = get_transforms()
+    
+    if rank == 0:
+        logger.info("⚙️  Configuring On-The-Fly Data Preprocessing Pipeline:")
+        logger.info("  - SAR Training : Space -> SpeckleFilter -> LogTransform -> Normalize -> MixUp")
+        logger.info("  - SAR Validation: Space -> SpeckleFilter -> LogTransform -> Normalize")
+        logger.info("  - EO  Training : Space -> Resize -> ColorJitter -> Normalize -> MixUp")
+        
     train_dataset = EOSARDataset(CONFIG['train_sar_root'], CONFIG['train_eo_root'], sar_tr, eo_tr)
     val_dataset = SAROnlyDataset(CONFIG['val_sar_root'], CONFIG['val_csv_path'], train_dataset.class_to_idx, sar_val)
     
