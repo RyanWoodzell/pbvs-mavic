@@ -39,13 +39,19 @@ def run_local_training():
     gpu_count = torch.cuda.device_count()
     if gpu_count > 1:
         logger.info(f"🔥 [LOCAL] {gpu_count} GPUs detected! Launching Distributed Training...")
+        # CRITICAL: Prevent OpenMP thread thrashing on CPU-starved multi-GPU instances
+        env = os.environ.copy()
+        env['OMP_NUM_THREADS'] = '1'
+        env['MKL_NUM_THREADS'] = '1'
+        
         # Use torchrun to spawn multiple processes (one per GPU)
         cmd = f"{sys.executable} -m torch.distributed.run --nproc_per_node={gpu_count} src/train.py"
+        import subprocess
+        subprocess.run(cmd.split(), env=env)
     else:
         logger.info("🚀 [LOCAL] Single GPU detected. Running in standard mode...")
         cmd = f"{sys.executable} src/train.py"
-        
-    os.system(cmd)
+        os.system(cmd)
 
 def run_remote_training():
     """Triggers remote execution on a high-end GPU cluster via Modal."""

@@ -70,12 +70,15 @@ def train():
     
     train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
     
-    # Critical Fix: CPU Bottlenecking
-    # The system has 4 vCPUs. If world_size=4 and num_workers=8, we spawn 32 workers,
-    # causing 100% CPU thrashing and starving the GPUs.
-    # We must divide the available system CPUs evenly across the GPU processes.
+    # Critical Fix: CPU Bottlenecking on low-vCPU Cloud Instances
+    # If we have 4 GPUs but only 4 vCPUs, PyTorch DDP spawns 4 master processes.
+    # If we add ANY num_workers, we exceed CPU core count, causing massive OS context 
+    # switching thrashing (1% GPU utilization). Keep workers to 0 if CPU bound.
     sys_cpus = multiprocessing.cpu_count()
-    workers_per_gpu = max(1, sys_cpus // world_size)
+    if sys_cpus <= world_size:
+        workers_per_gpu = 0
+    else:
+        workers_per_gpu = max(1, (sys_cpus - world_size) // world_size)
 
     train_loader = DataLoader(
         train_dataset, 
