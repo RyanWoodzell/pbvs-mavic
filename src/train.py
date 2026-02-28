@@ -11,6 +11,7 @@ from data import get_transforms, EOSARDataset, SAROnlyDataset, mixup_data, mixup
 from losses import label_smoothed_ce_loss, FeatureMatchingLoss, SupConLoss
 from evaluate import evaluate_model
 from logger import logger
+import multiprocessing
 
 # Configuration - Tuned for Multi-GPU Superfast Training
 CONFIG = {
@@ -60,18 +61,25 @@ def train():
     
     train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
     
+    # Critical Fix: CPU Bottlenecking
+    # The system has 4 vCPUs. If world_size=4 and num_workers=8, we spawn 32 workers,
+    # causing 100% CPU thrashing and starving the GPUs.
+    # We must divide the available system CPUs evenly across the GPU processes.
+    sys_cpus = multiprocessing.cpu_count()
+    workers_per_gpu = max(1, sys_cpus // world_size)
+
     train_loader = DataLoader(
         train_dataset, 
         batch_size=CONFIG['batch_size'] // world_size,
         sampler=train_sampler,
-        num_workers=CONFIG['num_workers'],
+        num_workers=workers_per_gpu,
         pin_memory=True
     )
     
     # Validation only on rank 0 to save resources
     val_loader = None
     if rank == 0:
-        val_loader = DataLoader(val_dataset, batch_size=CONFIG['batch_size'], shuffle=False, num_workers=4)
+        val_loader = DataLoader(val_dataset, batch_size=CONFIG['batch_size'], shuffle=False, num_workers=min(4, sys_cpus))
 
     # Model - Wrapped for DDP
     model = MAVIC_V2_Model(num_classes=CONFIG['num_classes']).to(device)
