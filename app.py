@@ -22,8 +22,8 @@ def check_local_gpu():
     return False
 
 def run_local_training():
-    """Runs the training pipeline on the local machine."""
-    print("📦 Initializing local training pipeline...")
+    """Runs the training pipeline on the local machine with Multi-GPU support."""
+    print("📦 Initializing high-performance training pipeline...")
     
     # Automated Data Check and Retrieval
     from dataset_utils import download_from_drive, extract_dataset, check_structure
@@ -34,8 +34,17 @@ def run_local_training():
         print("❌ Error: Initialized data structure is invalid. Aborting.")
         return
 
-    from train import train
-    train()
+    # Check GPU count for torchrun
+    gpu_count = torch.cuda.device_count()
+    if gpu_count > 1:
+        print(f"🔥 [LOCAL] {gpu_count} GPUs detected! Launching Distributed Training...")
+        # Use torchrun to spawn multiple processes (one per GPU)
+        cmd = f"{sys.executable} -m torch.distributed.run --nproc_per_node={gpu_count} src/train.py"
+    else:
+        print("🚀 [LOCAL] Single GPU detected. Running in standard mode...")
+        cmd = f"{sys.executable} src/train.py"
+        
+    os.system(cmd)
 
 def run_remote_training():
     """Triggers remote execution on a high-end GPU cluster via Modal."""
