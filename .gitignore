@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data files
+pbvs_mavic_dataset/
+datasets/
+test_data/
+*.zip
+*.csv
+*.pth
+*.log
+submission.csv
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs
+test_output.txt
+final_validation.log
+
+# IDEs
+.vscode/
+.idea/
+.ipynb_checkpoints/
