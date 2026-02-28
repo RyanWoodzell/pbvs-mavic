@@ -13,23 +13,19 @@ from losses import label_smoothed_ce_loss, FeatureMatchingLoss, SupConLoss
 from evaluate import evaluate_model
 from logger import logger
 import multiprocessing
+import json
 
-# Configuration - Tuned for Multi-GPU Superfast Training
-CONFIG = {
-    'train_sar_root': './pbvs_mavic_dataset/train/SAR_Train',
-    'train_eo_root':  './pbvs_mavic_dataset/train/EO_Train',
-    'val_sar_root':   './pbvs_mavic_dataset/val',
-    'val_csv_path':   './pbvs_mavic_dataset/Validation_reference.csv',
-    'num_classes': 10,
-    'batch_size': 128,  # Increased for multi-GPU
-    'epochs': 50,
-    'lr': 4e-4,         # Scaled LR for larger effective batch size
-    'wd': 1e-4,
-    'alpha_mixup': 1.0,
-    'kd_weight': 0.5,   # Increased KD for better SAR representation
-    'con_weight': 0.2,  # Tightened clusters for OOD
-    'num_workers': 8,   # Optimized for multi-CPU/GPU
-}
+# Dynamic Configuration Loading
+# Loads hyperparams and Rank-1 target metrics from the root config.json
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.json')
+try:
+    with open(CONFIG_PATH, 'r') as f:
+        _cfg = json.load(f)
+    CONFIG = {**_cfg['dataset'], **_cfg['hyperparameters']}
+    EARLY_STOPPING_CONFIG = _cfg['early_stopping']
+except Exception as e:
+    raise RuntimeError(f"Could not load config.json from {CONFIG_PATH}: {str(e)}")
+
 
 def setup_ddp():
     """Initialize Distributed Data Parallel."""
@@ -139,9 +135,9 @@ def train():
     gpu_transforms_sar_val = v2.Normalize(mean=[0.5], std=[0.2]).to(device)
 
     best_score = 0.0
-    patience = 7  # Epochs wait before early stopping
+    patience = EARLY_STOPPING_CONFIG.get('patience', 7)
     epochs_no_improve = 0
-    target_rank_1_score = 0.42 # Rank 1 is 0.40, we aim slightly higher before auto-stopping
+    target_rank_1_score = EARLY_STOPPING_CONFIG.get('target_rank_1_score', 0.42)
     
     for epoch in range(CONFIG['epochs']):
         train_sampler.set_epoch(epoch)

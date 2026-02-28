@@ -1,0 +1,22 @@
+{
+    "dataset": {
+        "train_sar_root": "./pbvs_mavic_dataset/train/SAR_Train",
+        "train_eo_root": "./pbvs_mavic_dataset/train/EO_Train",
+        "val_sar_root": "./pbvs_mavic_dataset/val",
+        "val_csv_path": "./pbvs_mavic_dataset/Validation_reference.csv"
+    },
+    "hyperparameters": {
+        "num_classes": 10,
+        "batch_size": 128,
+        "epochs": 50,
+        "lr": 0.0004,
+        "wd": 0.0001,
+        "alpha_mixup": 1.0,
+        "kd_weight": 0.5,
+        "con_weight": 0.2
+    },
+    "early_stopping": {
+        "patience": 7,
+        "target_rank_1_score": 0.42
+    }
+}
