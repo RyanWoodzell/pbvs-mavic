@@ -1,6 +1,18 @@
-import os
-import torch
 import sys
+
+# Must be first: force UTF-8 on stdout/stderr before any logging is set up.
+# This prevents UnicodeEncodeError on Windows (cp1252) when printing emoji/unicode.
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+import os
+
+# Redirect PyTorch model cache to D drive — C drive has very limited free space.
+os.environ.setdefault('TORCH_HOME', r'D:\torch_cache')
+os.environ.setdefault('HF_HOME', r'D:\torch_cache\huggingface')
+import torch
 
 # Add src/ to sys.path for internal imports
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
@@ -35,19 +47,29 @@ def run_local_training():
         logger.error("❌ Error: Initialized data structure is invalid. Aborting.")
         return
 
-    # Check GPU count for torchrun
+    # Check GPU count for multi-GPU training
     gpu_count = torch.cuda.device_count()
     if gpu_count > 1:
         logger.info(f"🔥 [LOCAL] {gpu_count} GPUs detected! Launching Distributed Training...")
-        # CRITICAL: Prevent OpenMP thread thrashing on CPU-starved multi-GPU instances
-        env = os.environ.copy()
-        env['OMP_NUM_THREADS'] = '1'
-        env['MKL_NUM_THREADS'] = '1'
-        
-        # Use torchrun to spawn multiple processes (one per GPU)
-        cmd = f"{sys.executable} -m torch.distributed.run --nproc_per_node={gpu_count} src/train.py"
-        import subprocess
-        subprocess.run(cmd.split(), env=env)
+        # Pre-download all model weights in the main process before spawning children.
+        # mp.spawn creates fresh processes that all try to download simultaneously,
+        # causing a race condition where one reads a partially-written file.
+        logger.info("⬇️  Pre-fetching pretrained weights to cache before spawning workers...")
+        import torchvision.models as _tv
+        _tv.resnet50(weights='IMAGENET1K_V1')
+        _tv.efficientnet_b0(weights='IMAGENET1K_V1')
+        del _tv
+        logger.info("✅ Weights cached. Spawning DDP workers...")
+
+        # Use torch.multiprocessing.spawn — works on Windows (torchrun uses libuv TCPStore
+        # which is not compiled into Windows PyTorch wheels).
+        # Use a FileStore (filesystem-based rendezvous) to avoid TCP/libuv entirely.
+        import tempfile, time, torch.multiprocessing as mp
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+        from train import train_spawn
+        store_path = os.path.join(tempfile.gettempdir(),
+                                  f'torch_ddp_store_{os.getpid()}_{int(time.time())}')
+        mp.spawn(train_spawn, args=(gpu_count, store_path), nprocs=gpu_count, join=True)
     else:
         logger.info("🚀 [LOCAL] Single GPU detected. Running in standard mode...")
         cmd = f"{sys.executable} src/train.py"

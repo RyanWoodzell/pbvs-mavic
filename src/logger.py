@@ -2,6 +2,12 @@ import logging
 import sys
 import os
 
+# Force UTF-8 on stdout/stderr so emoji and non-ASCII chars work on Windows (cp1252)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 def setup_logger(name="StagAI", log_file="training.log", level=logging.INFO):
     """
     Sets up a comprehensive logger with both console and file handlers.
@@ -23,9 +29,9 @@ def setup_logger(name="StagAI", log_file="training.log", level=logging.INFO):
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
-        # File Handler (append mode)
+        # File Handler (append mode) — explicitly UTF-8 so emoji/unicode don't crash on Windows
         os.makedirs(os.path.dirname(log_file) if os.path.dirname(log_file) else '.', exist_ok=True)
-        file_handler = logging.FileHandler(log_file, mode='a')
+        file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 

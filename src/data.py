@@ -48,21 +48,12 @@ class SARLogTransform:
         img = img / (img.max() + self.eps)
         return img
 
-COMPETITION_CLASS_TO_IDX = {
-    "sedan":                  0,
-    "SUV":                    1,
-    "pickup_truck":           2,
-    "van":                    3,
-    "box_truck":              4,
-    "motorcycle":             5,
-    "flatbed_truck":          6,
-    "bus":                    7,
-    "pickup_truck_w_trailer": 8,
-    "semi_w_trailer":         9,
-}
-
 class EOSARDataset(Dataset):
-    """Dataset for paired EO and SAR training images."""
+    """
+    Dataset for paired EO and SAR training images.
+    Falls back to EO-only mode when SAR training images are not available
+    (cross-modal competition setting where only EO training data is provided).
+    """
     def __init__(self, sar_root, eo_root, sar_transform=None, eo_transform=None):
         self.sar_root = sar_root
         self.eo_root = eo_root
@@ -70,22 +61,29 @@ class EOSARDataset(Dataset):
         self.eo_transform = eo_transform
         
         self.classes = sorted(os.listdir(sar_root))
-        self.class_to_idx = COMPETITION_CLASS_TO_IDX
+        self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
         
         self.samples = []
         for cls_name in self.classes:
-            sar_cls_path = os.path.join(sar_root, cls_name)
+            if cls_name not in self.class_to_idx:
+                continue
             eo_cls_path = os.path.join(eo_root, cls_name)
-            
-            for img_name in os.listdir(sar_cls_path):
+            if not os.path.isdir(eo_cls_path):
+                continue
+
+            for img_name in os.listdir(eo_cls_path):
                 if not img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
                     continue
-                    
-                sar_img_path = os.path.join(sar_cls_path, img_name)
+
                 eo_img_path = os.path.join(eo_cls_path, img_name)
-                
-                if os.path.exists(eo_img_path):
-                    self.samples.append((sar_img_path, eo_img_path, self.class_to_idx[cls_name]))
+
+                if self.eo_only:
+                    # Use EO image for both modalities
+                    self.samples.append((eo_img_path, eo_img_path, self.class_to_idx[cls_name]))
+                else:
+                    sar_img_path = os.path.join(sar_root, cls_name, img_name)
+                    if os.path.exists(sar_img_path):
+                        self.samples.append((sar_img_path, eo_img_path, self.class_to_idx[cls_name]))
 
     def __len__(self):
         return len(self.samples)

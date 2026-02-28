@@ -8,6 +8,7 @@ pbvs_mavic_dataset/
 datasets/
 test_data/
 *.zip
+*.part
 *.csv
 *.pth
 *.log

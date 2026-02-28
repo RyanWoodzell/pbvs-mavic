@@ -1,9 +1,9 @@
 {
     "dataset": {
-        "train_sar_root": "./pbvs_mavic_dataset/train/SAR_Train",
-        "train_eo_root": "./pbvs_mavic_dataset/train/EO_Train",
-        "val_sar_root": "./pbvs_mavic_dataset/val",
-        "val_csv_path": "./pbvs_mavic_dataset/Validation_reference.csv"
+        "train_sar_root": "D:\\pbvs_data\\pbvs_mavic_dataset\\train\\SAR_Train",
+        "train_eo_root": "D:\\pbvs_data\\pbvs_mavic_dataset\\train\\EO_Train",
+        "val_sar_root": "D:\\pbvs_data\\pbvs_mavic_dataset\\test",
+        "val_csv_path": "D:\\pbvs_data\\pbvs_mavic_dataset\\Validation_reference.csv"
     },
     "hyperparameters": {
         "num_classes": 10,

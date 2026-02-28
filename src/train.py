@@ -27,18 +27,34 @@ except Exception as e:
     raise RuntimeError(f"Could not load config.json from {CONFIG_PATH}: {str(e)}")
 
 
-def setup_ddp():
-    """Initialize Distributed Data Parallel."""
-    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
-        rank = int(os.environ["RANK"])
-        world_size = int(os.environ["WORLD_SIZE"])
-        gpu = int(os.environ["LOCAL_RANK"])
-        dist.init_process_group(backend='nccl', init_method='env://', world_size=world_size, rank=rank)
+def setup_ddp(rank=None, world_size=None, store_path=None):
+    """
+    Initialize Distributed Data Parallel.
+    Supports torchrun (env-var) and mp.spawn (arg-based) launch.
+    Uses FileStore + gloo on Windows to avoid TCPStore/libuv dependency.
+    Uses nccl + env:// on Linux (standard torchrun path).
+    """
+    import platform
+    on_windows = platform.system() == 'Windows'
+
+    if rank is not None and store_path is not None:
+        # mp.spawn path: init via FileStore (no libuv needed)
+        gpu = rank
         torch.cuda.set_device(gpu)
-        
-        # Optimize memory allocator for deep learning
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress generic warnings
-        # Enable CuDNN auto-tuner to find best convolution algorithms
+        store = dist.FileStore(store_path, world_size)
+        dist.init_process_group(backend='gloo', store=store,
+                                rank=rank, world_size=world_size)
+        torch.backends.cudnn.benchmark = True
+    elif 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+        # torchrun path
+        rank = int(os.environ['RANK'])
+        world_size = int(os.environ['WORLD_SIZE'])
+        gpu = int(os.environ.get('LOCAL_RANK', rank))
+        backend = 'gloo' if on_windows else 'nccl'
+        dist.init_process_group(backend=backend, init_method='env://',
+                                world_size=world_size, rank=rank)
+        torch.cuda.set_device(gpu)
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
         torch.backends.cudnn.benchmark = True
     else:
         rank = 0
@@ -46,14 +62,19 @@ def setup_ddp():
         gpu = 0
     return rank, world_size, gpu
 
-def train():
-    rank, world_size, gpu = setup_ddp()
+
+def train_spawn(rank, world_size, store_path):
+    """Entry point for torch.multiprocessing.spawn (Windows-compatible DDP)."""
+    train(rank=rank, world_size=world_size, store_path=store_path)
+
+def train(rank=None, world_size=None, store_path=None):
+    rank, world_size, gpu = setup_ddp(rank=rank, world_size=world_size, store_path=store_path)
     device = torch.device(f'cuda:{gpu}' if torch.cuda.is_available() else 'cpu')
     
     if rank == 0:
         logger.info(f"🚀 [STAG-DDP] Initializing training on {world_size} GPUs...")
-        if not os.path.exists(CONFIG['train_sar_root']):
-            logger.error(f"ERROR: Dataset not found. Run dataset_utils.py first.")
+        if not os.path.exists(CONFIG['train_eo_root']):
+            logger.error(f"ERROR: EO training dataset not found at {CONFIG['train_eo_root']}. Run dataset_utils.py first.")
             return
 
     # Data Pipeline - Multi-threaded and Distributed
@@ -74,8 +95,11 @@ def train():
     # If we have 4 GPUs but only 4 vCPUs, PyTorch DDP spawns 4 master processes.
     # If we add ANY num_workers, we exceed CPU core count, causing massive OS context 
     # switching thrashing (1% GPU utilization). Keep workers to 0 if CPU bound.
+    # On Windows: always use 0 workers — nested multiprocessing (DDP + DataLoader)
+    # triggers PermissionError [WinError 5] with shared memory IPC.
+    import platform
     sys_cpus = multiprocessing.cpu_count()
-    if sys_cpus <= world_size:
+    if platform.system() == 'Windows' or sys_cpus <= world_size:
         workers_per_gpu = 0
     else:
         workers_per_gpu = max(1, (sys_cpus - world_size) // world_size)
@@ -199,7 +223,7 @@ def train():
             if pbar:
                 pbar.set_postfix({'loss': train_loss / (pbar.n + 1)})
             
-        scheduler.step()
+            scheduler.step()
         
         # Validation on Master Node and Broadcast Early Stop Signals
         should_stop = torch.tensor(0).to(device)

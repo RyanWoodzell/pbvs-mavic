@@ -9,6 +9,14 @@ from src.logger import logger
 DATASET_ZIP_ID = "1loB3fs_iPukKH6RdRTmeIHwRI51pijAu"
 VALIDATION_CSV_ID = "1DX-Y3HSCIb-LHASPSx5F0kg-n6FcmzcJ"
 
+# Store large files on D drive to avoid filling up C drive
+DATA_DIR = "D:\\pbvs_data"
+DATASET_ZIP = os.path.join(DATA_DIR, "pbvs_dataset.zip")
+DATASET_DIR = os.path.join(DATA_DIR, "pbvs_mavic_dataset")
+VALIDATION_CSV = os.path.join(DATA_DIR, "Validation_reference.csv")
+
+os.makedirs(DATA_DIR, exist_ok=True)
+
 def install_gdown():
     """Ensure gdown is installed for automated downloads."""
     try:
@@ -24,18 +32,19 @@ def download_from_drive():
     gdown_lib = install_gdown()
     
     # Download Zip if not exists
-    if not os.path.exists('pbvs_dataset.zip'):
-        logger.info(f"📡 Downloading pbvs_dataset.zip from Google Drive...")
+    if not os.path.exists(DATASET_ZIP):
+        logger.info(f"📡 Downloading pbvs_dataset.zip to {DATA_DIR} ...")
         url = f'https://drive.google.com/uc?id={DATASET_ZIP_ID}'
-        gdown_lib.download(url, 'pbvs_dataset.zip', quiet=False)
+        gdown_lib.download(url, DATASET_ZIP, quiet=False)
     
-    # Download Reference CSV if not exists (in root or mapped folder)
-    if not os.path.exists('pbvs_mavic_dataset/Validation_reference.csv') and not os.path.exists('Validation_reference.csv'):
-         logger.info(f"📡 Downloading Validation_reference.csv from Google Drive...")
+    # Download Reference CSV if not exists
+    target_csv = os.path.join(DATASET_DIR, 'Validation_reference.csv')
+    if not os.path.exists(target_csv) and not os.path.exists(VALIDATION_CSV):
+         logger.info(f"📡 Downloading Validation_reference.csv to {DATA_DIR} ...")
          url_csv = f'https://drive.google.com/uc?id={VALIDATION_CSV_ID}'
-         gdown_lib.download(url_csv, 'Validation_reference.csv', quiet=False)
+         gdown_lib.download(url_csv, VALIDATION_CSV, quiet=False)
 
-def extract_dataset(zip_path='pbvs_dataset.zip', extract_to='./pbvs_mavic_dataset'):
+def extract_dataset(zip_path=DATASET_ZIP, extract_to=DATASET_DIR):
     """Extract the dataset zip and organize it."""
     if not os.path.exists(zip_path):
         logger.warning(f"⚠️ Warning: Zip file not found at {zip_path}. Attempting download...")
@@ -49,35 +58,37 @@ def extract_dataset(zip_path='pbvs_dataset.zip', extract_to='./pbvs_mavic_datase
     else:
         logger.info(f"♻️  Dataset already extracted at {extract_to}. Skipping extraction.")
     
-    # If the CSV was downloaded to root, move it into the extracted folder
+    # If the CSV was downloaded to DATA_DIR, move it into the extracted folder
     target_csv = os.path.join(extract_to, 'Validation_reference.csv')
-    if os.path.exists('Validation_reference.csv') and not os.path.exists(target_csv):
+    if os.path.exists(VALIDATION_CSV) and not os.path.exists(target_csv):
         logger.info(f"📦 Moving Validation_reference.csv into {extract_to}")
-        shutil.move('Validation_reference.csv', target_csv)
+        shutil.move(VALIDATION_CSV, target_csv)
 
-def check_structure(base_path='./pbvs_mavic_dataset'):
+def check_structure(base_path=DATASET_DIR):
     """Check if the dataset structure matches expectations."""
-    expected = [
-        os.path.join(base_path, 'train/EO_Train'),
-        os.path.join(base_path, 'train/SAR_Train'),
-        os.path.join(base_path, 'val'),
+    required = [
+        os.path.join(base_path, 'train', 'EO_Train'),
+        os.path.join(base_path, 'test'),
         os.path.join(base_path, 'Validation_reference.csv')
     ]
-    
-    missing = []
-    for path in expected:
-        if not os.path.exists(path):
-            missing.append(path)
-            
+    optional = [
+        os.path.join(base_path, 'train', 'SAR_Train'),  # Not always included
+    ]
+
+    missing = [p for p in required if not os.path.exists(p)]
+
     if missing:
-        logger.error("❌ Missing components:")
+        logger.error("❌ Missing required components:")
         for m in missing:
             logger.error(f" - {m}")
         return False
-    else:
-        logger.info("🚀 Dataset structure is PERFECT. Ready for training.")
-        return True
 
+    for p in optional:
+        if not os.path.exists(p):
+            logger.warning(f"⚠️ Optional path not found (EO-only training mode): {p}")
+
+    logger.info("✅ Dataset structure verified. Ready for training.")
+    return True
 if __name__ == "__main__":
     download_from_drive()
     extract_dataset('pbvs_dataset.zip')
