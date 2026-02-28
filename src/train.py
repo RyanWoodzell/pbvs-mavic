@@ -7,7 +7,8 @@ from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
 from models import MAVIC_V2_Model
-from data import get_transforms, EOSARDataset, SAROnlyDataset, mixup_data, mixup_criterion
+from data import get_transforms, EOSARDataset, SAROnlyDataset, mixup_data, mixup_criterion, SpeckleFilter, SARLogTransform
+import torchvision.transforms.v2 as v2
 from losses import label_smoothed_ce_loss, FeatureMatchingLoss, SupConLoss
 from evaluate import evaluate_model
 from logger import logger
@@ -116,6 +117,27 @@ def train():
     kd_loss_fn = FeatureMatchingLoss(loss_type='mse')
     con_loss_fn = SupConLoss(temperature=0.07)
 
+    # Move Augmentations to GPU to fix 100% CPU Bottleneck
+    # Using Torchvision V2 which is hyper-optimized for Batched GPU Tensors
+    gpu_transforms_eo = v2.Compose([
+        v2.RandomHorizontalFlip(),
+        v2.RandomVerticalFlip(),
+        v2.ColorJitter(brightness=0.2, contrast=0.2),
+        v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ]).to(device)
+
+    # Re-use custom classes but pass them GPU tensors
+    speckle_filter = SpeckleFilter()
+    log_transform = SARLogTransform()
+    
+    gpu_transforms_sar_train = v2.Compose([
+        v2.RandomHorizontalFlip(),
+        v2.RandomVerticalFlip(),
+        v2.Normalize(mean=[0.5], std=[0.2])
+    ]).to(device)
+    
+    gpu_transforms_sar_val = v2.Normalize(mean=[0.5], std=[0.2]).to(device)
+
     best_score = 0.0
     patience = 7  # Epochs wait before early stopping
     epochs_no_improve = 0
@@ -134,6 +156,14 @@ def train():
             sar = batch['sar'].to(device, non_blocking=True)
             eo = batch['eo'].to(device, non_blocking=True)
             labels = batch['label'].to(device, non_blocking=True)
+            
+            # --- GPU-Accelerated Preprocessing ---
+            # EO Pipeline
+            eo = gpu_transforms_eo(eo)
+            # SAR Pipeline
+            sar = speckle_filter(sar)
+            sar = log_transform(sar)
+            sar = gpu_transforms_sar_train(sar)
             
             sar, eo, labels_a, labels_b, lam = mixup_data(sar, eo, labels, CONFIG['alpha_mixup'])
             optimizer.zero_grad(set_to_none=True)

@@ -126,31 +126,21 @@ class SAROnlyDataset(Dataset):
         return {'sar': img, 'image_id': img_name, 'label': label, 'ood_flag': ood_flag}
 
 def get_transforms(img_size=224):
+    # Minimal CPU-bound transforms (Resize & ToTensor only)
+    # Augmentations will be applied on the GPU to fix CPU bottleneck
     eo_train_transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
     sar_train_transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(),
         transforms.ToTensor(),
-        SpeckleFilter(),
-        SARLogTransform(),
-        transforms.Normalize(mean=[0.5], std=[0.2]) # Approximation, adjust based on stats
     ])
     
     sar_val_transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
         transforms.ToTensor(),
-        SpeckleFilter(),
-        SARLogTransform(),
-        transforms.Normalize(mean=[0.5], std=[0.2])
     ])
     
     return eo_train_transform, sar_train_transform, sar_val_transform
