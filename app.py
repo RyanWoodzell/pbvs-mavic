@@ -24,6 +24,16 @@ def check_local_gpu():
 def run_local_training():
     """Runs the training pipeline on the local machine."""
     print("📦 Initializing local training pipeline...")
+    
+    # Automated Data Check and Retrieval
+    from dataset_utils import download_from_drive, extract_dataset, check_structure
+    print("🔍 Checking dataset availability...")
+    download_from_drive()
+    extract_dataset()
+    if not check_structure():
+        print("❌ Error: Initialized data structure is invalid. Aborting.")
+        return
+
     from train import train
     train()
 
