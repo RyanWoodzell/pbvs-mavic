@@ -87,6 +87,10 @@ def train():
     con_loss_fn = SupConLoss(temperature=0.07)
 
     best_score = 0.0
+    patience = 7  # Epochs wait before early stopping
+    epochs_no_improve = 0
+    target_rank_1_score = 0.42 # Rank 1 is 0.40, we aim slightly higher before auto-stopping
+    
     for epoch in range(CONFIG['epochs']):
         train_sampler.set_epoch(epoch)
         model.train()
@@ -133,15 +137,36 @@ def train():
             
         scheduler.step()
         
-        # Validation on Master Node
+        # Validation on Master Node and Broadcast Early Stop Signals
+        should_stop = torch.tensor(0).to(device)
+        
         if rank == 0:
             val_metrics = evaluate_model(model.module if world_size > 1 else model, val_loader, device, train_dataset.class_to_idx)
-            print(f"📈 [VAL] Acc: {val_metrics['acc']:.4f}, AUROC: {val_metrics['auroc']:.4f}, Score: {val_metrics['final_score']:.4f}")
+            final_sc = val_metrics['final_score']
+            print(f"📈 [VAL] Acc: {val_metrics['acc']:.4f}, AUROC: {val_metrics['auroc']:.4f}, Score: {final_sc:.4f}")
             
-            if val_metrics['final_score'] > best_score:
-                best_score = val_metrics['final_score']
+            if final_sc > best_score:
+                best_score = final_sc
+                epochs_no_improve = 0
                 torch.save(model.state_dict(), 'best_mavic_v2.pth')
                 print("💎 New best model saved!")
+                
+                if final_sc >= target_rank_1_score:
+                    print(f"🎉🏆 TARGET REACHED! Score {final_sc:.4f} > Rank 1. Auto-stopping to save compute.")
+                    should_stop = torch.tensor(1).to(device)
+            else:
+                epochs_no_improve += 1
+                print(f"⏳ No improvement for {epochs_no_improve} epochs.")
+                if epochs_no_improve >= patience:
+                    print(f"🛑 EARLY STOPPING triggered. No improvement for {patience} epochs.")
+                    should_stop = torch.tensor(1).to(device)
+                    
+        # Sync the stopping decision across all GPUs
+        if world_size > 1:
+            dist.broadcast(should_stop, src=0)
+            
+        if should_stop.item() == 1:
+            break
 
     if world_size > 1:
         dist.destroy_process_group()
