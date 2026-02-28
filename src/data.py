@@ -65,6 +65,9 @@ class EOSARDataset(Dataset):
             eo_cls_path = os.path.join(eo_root, cls_name)
             
             for img_name in os.listdir(sar_cls_path):
+                if not img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    continue
+                    
                 sar_img_path = os.path.join(sar_cls_path, img_name)
                 eo_img_path = os.path.join(eo_cls_path, img_name)
                 
