@@ -48,6 +48,19 @@ class SARLogTransform:
         img = img / (img.max() + self.eps)
         return img
 
+COMPETITION_CLASS_TO_IDX = {
+    "sedan":                  0,
+    "SUV":                    1,
+    "pickup_truck":           2,
+    "van":                    3,
+    "box_truck":              4,
+    "motorcycle":             5,
+    "flatbed_truck":          6,
+    "bus":                    7,
+    "pickup_truck_w_trailer": 8,
+    "semi_w_trailer":         9,
+}
+
 class EOSARDataset(Dataset):
     """Dataset for paired EO and SAR training images."""
     def __init__(self, sar_root, eo_root, sar_transform=None, eo_transform=None):
@@ -57,7 +70,7 @@ class EOSARDataset(Dataset):
         self.eo_transform = eo_transform
         
         self.classes = sorted(os.listdir(sar_root))
-        self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
+        self.class_to_idx = COMPETITION_CLASS_TO_IDX
         
         self.samples = []
         for cls_name in self.classes:
@@ -153,21 +166,3 @@ def get_transforms(img_size=224):
     
     return eo_train_transform, sar_train_transform, sar_val_transform
 
-
-def mixup_data(x_sar, x_eo, y, alpha=1.0):
-    """Returns mixed inputs, pairs of targets, and lambda."""
-    if alpha > 0:
-        lam = np.random.beta(alpha, alpha)
-    else:
-        lam = 1
-
-    batch_size = x_sar.size(0)
-    index = torch.randperm(batch_size).to(x_sar.device)
-
-    mixed_sar = lam * x_sar + (1 - lam) * x_sar[index, :]
-    mixed_eo = lam * x_eo + (1 - lam) * x_eo[index, :]
-    y_a, y_b = y, y[index]
-    return mixed_sar, mixed_eo, y_a, y_b, lam
-
-def mixup_criterion(criterion, pred, y_a, y_b, lam):
-    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)

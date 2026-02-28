@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
 
 from models import MAVIC_V2_Model
-from data import get_transforms, EOSARDataset, SAROnlyDataset, mixup_data, mixup_criterion, SpeckleFilter, SARLogTransform
+from data import get_transforms, EOSARDataset, SAROnlyDataset, SpeckleFilter, SARLogTransform
 import torchvision.transforms.v2 as v2
 from losses import label_smoothed_ce_loss, FeatureMatchingLoss, SupConLoss
 from evaluate import evaluate_model
@@ -61,9 +61,9 @@ def train():
     
     if rank == 0:
         logger.info("⚙️  Configuring On-The-Fly Data Preprocessing Pipeline:")
-        logger.info("  - SAR Training : Space -> SpeckleFilter -> LogTransform -> Normalize -> MixUp")
+        logger.info("  - SAR Training : Space -> SpeckleFilter -> LogTransform -> Normalize")
         logger.info("  - SAR Validation: Space -> SpeckleFilter -> LogTransform -> Normalize")
-        logger.info("  - EO  Training : Space -> Resize -> ColorJitter -> Normalize -> MixUp")
+        logger.info("  - EO  Training : Space -> Resize -> ColorJitter -> Normalize")
         
     train_dataset = EOSARDataset(CONFIG['train_sar_root'], CONFIG['train_eo_root'], sar_tr, eo_tr)
     val_dataset = SAROnlyDataset(CONFIG['val_sar_root'], CONFIG['val_csv_path'], train_dataset.class_to_idx, sar_val)
@@ -108,7 +108,13 @@ def train():
         model = DDP(model, device_ids=[gpu], find_unused_parameters=True)
 
     optimizer = optim.AdamW(model.parameters(), lr=CONFIG['lr'], weight_decay=CONFIG['wd'])
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=CONFIG['epochs'])
+    scheduler = optim.lr_scheduler.OneCycleLR(
+        optimizer, 
+        max_lr=CONFIG['lr'], 
+        epochs=CONFIG['epochs'], 
+        steps_per_epoch=len(train_loader),
+        pct_start=0.1
+    )
 
     # Modern AMP API (as per user warning)
     scaler = torch.amp.GradScaler('cuda', enabled=(device.type == 'cuda'))
@@ -164,7 +170,6 @@ def train():
             sar = log_transform(sar)
             sar = gpu_transforms_sar_train(sar)
             
-            sar, eo, labels_a, labels_b, lam = mixup_data(sar, eo, labels, CONFIG['alpha_mixup'])
             optimizer.zero_grad(set_to_none=True)
             
             with torch.amp.autocast('cuda', enabled=(device.type == 'cuda')):
@@ -174,8 +179,8 @@ def train():
                 else:
                     eo_proj, sar_proj, eo_logits, sar_logits = model(eo, sar, mode='joint')
                 
-                loss_eo = mixup_criterion(label_smoothed_ce_loss, eo_logits, labels_a, labels_b, lam)
-                loss_sar = mixup_criterion(label_smoothed_ce_loss, sar_logits, labels_a, labels_b, lam)
+                loss_eo = label_smoothed_ce_loss(eo_logits, labels)
+                loss_sar = label_smoothed_ce_loss(sar_logits, labels)
                 loss_kd = kd_loss_fn(sar_proj, eo_proj.detach())
                 
                 # Use raw model for contrastive head to avoid DDP sync issues on sub-modules
