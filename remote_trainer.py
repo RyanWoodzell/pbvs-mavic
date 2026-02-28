@@ -16,7 +16,7 @@ image = (
     )
 )
 
-stub = modal.Stub("stagai-mavic-v2")
+stub = modal.Stub("pbvs-mavic")
 
 # Mount your local code so Modal can see it
 code_mount = modal.Mount.from_local_dir(

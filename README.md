@@ -15,7 +15,7 @@ A high-performance deep learning solution designed to achieve Rank 1 in the **MA
 
 ## 📁 Repository Structure
 ```bash
-pbvs_mavic/
+pbvs-mavic/
 ├── app.py              # Main Dispatcher (Auto-GPU detection)
 ├── Dockerfile          # Container environment
 ├── requirements.txt    # Project dependencies
@@ -33,20 +33,20 @@ pbvs_mavic/
 
 ### 1. Simple Clone & Run
 ```bash
-git clone https://github.com/sidharthkumarpradhan/pbvs_mavic.git
-cd pbvs_mavic
+git clone https://github.com/sidharthkumarpradhan/pbvs-mavic.git
+cd pbvs-mavic
 pip install -r requirements.txt
 python app.py
 ```
 
 ### 2. Docker Execution (Recommended for Remote Servers)
 ```bash
-docker build -t pbvs_mavic .
-docker run --gpus all pbvs_mavic
+docker build -t pbvs-mavic .
+docker run --gpus all pbvs-mavic
 ```
 
 ### 3. Google Colab / Remote GPU
-1. Use the [StagAI_MAVIC_V2_Colab.ipynb](https://github.com/sidharthkumarpradhan/pbvs_mavic/blob/master/StagAI_MAVIC_V2_Colab.ipynb) provided.
+1. Use the [StagAI_MAVIC_V2_Colab.ipynb](https://github.com/sidharthkumarpradhan/pbvs-mavic/blob/master/StagAI_MAVIC_V2_Colab.ipynb) provided.
 2. Or use **Modal** for zero-intervention A100 execution:
    ```bash
    pip install modal
