@@ -49,8 +49,10 @@ class ContrastiveHead(nn.Module):
         super(ContrastiveHead, self).__init__()
         self.head = nn.Sequential(
             nn.Linear(in_dim, in_dim),
+            nn.BatchNorm1d(in_dim),
             nn.ReLU(),
-            nn.Linear(in_dim, out_dim)
+            nn.Linear(in_dim, out_dim),
+            nn.BatchNorm1d(out_dim)
         )
 
     def forward(self, x):
@@ -76,6 +78,7 @@ class MAVIC_V2_Model(nn.Module):
         # To make it robust, we'll have a head that takes the projected feature.
         self.classifier = nn.Sequential(
             nn.Linear(proj_dim, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(0.4),
             nn.Linear(256, num_classes)
