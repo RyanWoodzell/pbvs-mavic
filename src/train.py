@@ -38,6 +38,11 @@ def setup_ddp():
         gpu = int(os.environ["LOCAL_RANK"])
         dist.init_process_group(backend='nccl', init_method='env://', world_size=world_size, rank=rank)
         torch.cuda.set_device(gpu)
+        
+        # Optimize memory allocator for deep learning
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress generic warnings
+        # Enable CuDNN auto-tuner to find best convolution algorithms
+        torch.backends.cudnn.benchmark = True
     else:
         rank = 0
         world_size = 1
@@ -80,13 +85,22 @@ def train():
         batch_size=CONFIG['batch_size'] // world_size,
         sampler=train_sampler,
         num_workers=workers_per_gpu,
-        pin_memory=True
+        pin_memory=True,
+        drop_last=True, # Better for Batch Norm in DDP
+        prefetch_factor=2 if workers_per_gpu > 0 else None,
+        persistent_workers=True if workers_per_gpu > 0 else False
     )
     
     # Validation only on rank 0 to save resources
     val_loader = None
     if rank == 0:
-        val_loader = DataLoader(val_dataset, batch_size=CONFIG['batch_size'], shuffle=False, num_workers=min(4, sys_cpus))
+        val_loader = DataLoader(
+            val_dataset, 
+            batch_size=CONFIG['batch_size'], 
+            shuffle=False, 
+            num_workers=min(2, sys_cpus),
+            pin_memory=True
+        )
 
     # Model - Wrapped for DDP
     model = MAVIC_V2_Model(num_classes=CONFIG['num_classes']).to(device)

@@ -6,18 +6,27 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from logger import logger
 
+import torch.nn.functional as F
+
 class SpeckleFilter:
     """
-    Applies a spatial smoothing filter to approximate Speckle noise reduction 
-    in SAR images, as commonly cited in satellite image preprocessing.
+    Applies a very fast spatial smoothing filter (Mean Filter via AvgPool)
+    to approximate Speckle noise reduction. This avoids the massive CPU 
+    overhead of GaussianBlur inside the DataLoader.
     """
-    def __init__(self, kernel_size=3, sigma=(0.1, 2.0)):
-        self.blur = transforms.GaussianBlur(kernel_size=kernel_size, sigma=sigma)
+    def __init__(self, kernel_size=3):
+        self.kernel_size = kernel_size
+        self.padding = kernel_size // 2
         
     def __call__(self, img):
         if not isinstance(img, torch.Tensor):
             img = transforms.ToTensor()(img)
-        return self.blur(img)
+        
+        # Apply fast mean pooling (shape: C, H, W) -> add fake batch dim
+        img = img.unsqueeze(0)
+        img = F.avg_pool2d(img, kernel_size=self.kernel_size, stride=1, padding=self.padding)
+        img = img.squeeze(0)
+        return img
 
 class SARLogTransform:
     """Log-compress SAR intensity values to tame extreme scatterers."""
